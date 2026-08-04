@@ -42,23 +42,93 @@ th,td{border:1px solid #ddd;padding:8px;text-align:center}
 <table><thead><tr><th>Persona</th><th>Fecha</th><th>Horas</th><th>Acción</th></tr></thead><tbody id="hist"></tbody></table>
 
 <script>
-const personas=["Bastian","Benjamin","Carolyn","Daniela O","Daniela P","Francisca","Katerine","Natalia","Paola","Roberto"];
-let reg=JSON.parse(localStorage.getItem("horas"))||[];
-personas.forEach(x=>p.innerHTML+=`<option>${x}</option>`);
-const col=v=>v>=40?"red":v>=30?"orange":"green";
-function render(){
-cards.innerHTML="";hist.innerHTML="";
-personas.forEach(n=>{
-let t=reg.filter(r=>r.p===n).reduce((a,b)=>a+Number(b.h),0);
-cards.innerHTML+=`<div class='card'><b>${n}</b><div class='small'>HORAS EXTRA ACUMULADAS</div><div class='big'>${t.toFixed(1)} h</div><progress max='40' value='${t}' style='accent-color:${col(t)}'></progress></div>`;
-});
-if(!reg.length)hist.innerHTML="<tr><td colspan='4'>Aún no hay registros.</td></tr>";
-reg.forEach((r,i)=>hist.innerHTML+=`<tr><td>${r.p}</td><td>${r.f}</td><td>${r.h}</td><td><button class='icon' onclick='eliminar(${i})'>🗑️</button></td></tr>`);
-localStorage.setItem("horas",JSON.stringify(reg));
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwEDeXM4UMKZl3uUjjTcz643MitYsHl4A-P6RYw3707bjSByZPRrCBBzixF021wWXlweA/exec";
+const personas = ["Bastian","Benjamin","Carolyn","Daniela O","Daniela P","Francisca","Katerine","Natalia","Paola","Roberto"];
+let reg = [];
+
+personas.forEach(x => p.innerHTML += `<option>${x}</option>`);
+const col = v => v >= 40 ? "red" : v >= 30 ? "orange" : "green";
+
+// CARGAR DATOS DESDE GOOGLE SHEETS
+async function cargarDesdeSheets() {
+  try {
+    const res = await fetch(SCRIPT_URL);
+    const data = await res.json();
+    
+    // Mapeamos los datos de la hoja para que coincidan con tus nombres {p, f, h}
+    reg = data.map(item => ({
+      p: item.persona,
+      f: item.fecha,
+      h: item.horas
+    }));
+    
+    render();
+  } catch (err) {
+    console.error("Error al obtener datos:", err);
+  }
 }
-function agregar(){if(!f.value||!h.value)return alert("Complete los datos");reg.push({p:p.value,f:f.value,h:h.value});render();}
-function eliminar(i){if(confirm("¿Eliminar registro?")){reg.splice(i,1);render();}}
-function borrarUltimo(){if(!reg.length)return alert("No hay registros");if(confirm("¿Eliminar el último registro?")){reg.pop();render();}}
-render();
+
+function render() {
+  cards.innerHTML = "";
+  hist.innerHTML = "";
+
+  personas.forEach(n => {
+    let t = reg.filter(r => r.p === n).reduce((a, b) => a + Number(b.h), 0);
+    cards.innerHTML += `<div class='card'><b>${n}</b><div class='small'>HORAS EXTRA ACUMULADAS</div><div class='big'>${t.toFixed(1)} h</div></div>`;
+  });
+
+  if (!reg.length) {
+    hist.innerHTML = "<tr><td colspan='4'>Aún no hay registros.</td></tr>";
+  }
+
+  reg.forEach((r, i) => {
+    hist.innerHTML += `<tr><td>${r.p}</td><td>${r.f}</td><td>${r.h}</td><td><button class='icon' onclick='eliminar(${i})'>🗑️</button></td></tr>`;
+  });
+}
+
+// AGREGAR REGISTRO EN GOOGLE SHEETS
+async function agregar() {
+  if (!f.value || !h.value) return alert("Complete los datos");
+
+  const nuevoRegistro = { p: p.value, f: f.value, h: h.value };
+  reg.push(nuevoRegistro);
+  render(); // Actualiza la pantalla inmediatamente
+
+  // Envía a Google Sheets en segundo plano
+  await fetch(SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "ADD",
+      persona: p.value,
+      fecha: f.value,
+      horas: h.value
+    })
+  });
+}
+
+// ELIMINAR REGISTRO EN GOOGLE SHEETS
+async function eliminar(i) {
+  if (confirm("¿Eliminar registro?")) {
+    const borrado = reg[i];
+    reg.splice(i, 1);
+    render();
+
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "DELETE",
+        persona: borrado.p,
+        fecha: borrado.f
+      })
+    });
+  }
+}
+
+// Carga inicial al abrir la página
+cargarDesdeSheets();
 </script>
 </body></html>
