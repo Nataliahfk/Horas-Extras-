@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -11,8 +10,8 @@ body{font-family:Arial,sans-serif;background:#efe8dd;margin:25px}
 .titulo h2{margin:8px 0 0;color:#8c6b3d;font-size:22px;font-weight:500}
 h3{color:#243b5a}
 input,select,button{padding:10px;border:1px solid #aaa;border-radius:5px}
-.btn-add{background:#1f2937;color:#fff}
-.btn-del{background:#c0392b;color:#fff}
+.btn-add{background:#1f2937;color:#fff;cursor:pointer}
+.btn-del{background:#c0392b;color:#fff;cursor:pointer}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .card{background:#fff;border:1px solid #d8cdbd;border-radius:10px;padding:15px}
 .small{font-size:11px}.big{font-size:34px}
@@ -32,8 +31,8 @@ th,td{border:1px solid #ddd;padding:8px;text-align:center}
 <select id="p"></select>
 <input id="f" type="date">
 <input id="h" type="number" step="0.5" placeholder="Horas">
-<button class="btn-add" onclick="agregar()">Agregar Registro</button>
-<button class="btn-del" onclick="borrarUltimo()">Borrar Registro</button>
+<button type="button" class="btn-add" onclick="agregar()">Agregar Registro</button>
+<button type="button" class="btn-del" onclick="borrarUltimo()">Borrar Registro</button>
 
 <h3>02 ACUMULADO POR PERSONA</h3>
 <div id="cards" class="grid"></div>
@@ -48,9 +47,9 @@ const personas = ["Bastian","Benjamin","Carolyn","Daniela O","Daniela P","Franci
 let reg = [];
 
 // Elementos del DOM
-const p = document.querySelector("select");
-const f = document.querySelector("input[type='date']");
-const h = document.querySelector("input[type='number']") || document.querySelector("input[placeholder='Horas']");
+const p = document.getElementById("p");
+const f = document.getElementById("f");
+const h = document.getElementById("h");
 
 // Cargar desplegable de personas
 if (p) {
@@ -79,7 +78,7 @@ async function cargarDesdeSheets() {
 
 function render() {
   // 1. RENDERIZAR TARJETAS DE ACUMULADOS
-  const containerCards = document.getElementById("cards") || document.querySelector(".cards") || document.querySelectorAll("div")[2];
+  const containerCards = document.getElementById("cards");
   if (containerCards) {
     containerCards.innerHTML = "";
     personas.forEach(n => {
@@ -101,7 +100,7 @@ function render() {
   }
 
   // 2. RENDERIZAR TABLA DE HISTORIAL ESTILIZADA
-  const tbody = document.querySelector("table tbody");
+  const tbody = document.getElementById("hist");
   if (tbody) {
     let html = "";
     if (!reg.length) {
@@ -157,14 +156,14 @@ async function agregar() {
         horas: horasVal
       })
     });
-    // Volver a consultar Sheets pasados 1.5s para confirmar guardado
+    // Volver a consultar Sheets pasados 1.5s para sincronizar
     setTimeout(cargarDesdeSheets, 1500);
   } catch (err) {
     console.error("Error al guardar en Sheets:", err);
   }
 }
 
-// ELIMINAR REGISTRO
+// ELIMINAR REGISTRO ESPECÍFICO DE LA TABLA
 async function eliminar(i) {
   if (confirm("¿Desea eliminar este registro del historial?")) {
     const borrado = reg[i];
@@ -189,7 +188,33 @@ async function eliminar(i) {
   }
 }
 
+// ELIMINAR EL ÚLTIMO REGISTRO DE LA PERSONA SELECCIONADA EN EL FORMULARIO
+async function borrarUltimo() {
+  const personaVal = p.value;
+  const fechaVal = f.value;
+
+  if (!confirm(`¿Desea borrar el último registro asignado a ${personaVal}?`)) return;
+
+  try {
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({
+        action: "DELETE",
+        persona: personaVal,
+        fecha: fechaVal
+      })
+    });
+    setTimeout(cargarDesdeSheets, 1500);
+  } catch (err) {
+    console.error("Error al borrar en Sheets:", err);
+  }
+}
+
 // Cargar al iniciar
 cargarDesdeSheets();
 </script>
-</body></html>
+</body>
+</html>
+
