@@ -43,74 +43,144 @@ th,td{border:1px solid #ddd;padding:8px;text-align:center}
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwEDeXM4UMKZl3uUjjTcz643MitYsHl4A-P6RYw3707bjSByZPRrCBBzixF021wWXlweA/exec";
+
 const personas = ["Bastian","Benjamin","Carolyn","Daniela O","Daniela P","Francisca","Katerine","Natalia","Paola","Roberto"];
 let reg = [];
 
-personas.forEach(x => p.innerHTML += `<option>${x}</option>`);
-const col = v => v >= 40 ? "red" : v >= 30 ? "orange" : "green";
+// Elementos del DOM
+const p = document.querySelector("select");
+const f = document.querySelector("input[type='date']");
+const h = document.querySelector("input[type='number']") || document.querySelector("input[placeholder='Horas']");
+const cards = document.getElementById("cards") || document.querySelector(".cards") || document.querySelectorAll("div")[2];
+const hist = document.getElementById("hist") || document.querySelector("tbody") || document.querySelector("table");
 
-// CARGAR DATOS DESDE GOOGLE SHEETS
+// Cargar desplegable de personas
+if (p) {
+  p.innerHTML = "";
+  personas.forEach(x => p.innerHTML += `<option value="${x}">${x}</option>`);
+}
+
+// Cargar registros desde Google Sheets
 async function cargarDesdeSheets() {
   try {
     const res = await fetch(SCRIPT_URL);
     const data = await res.json();
-    
-    // Mapeamos los datos de la hoja para que coincidan con tus nombres {p, f, h}
-    reg = data.map(item => ({
-      p: item.persona,
-      f: item.fecha,
-      h: item.horas
-    }));
-    
+    if (Array.isArray(data)) {
+      reg = data.map(item => ({
+        p: item.persona,
+        f: item.fecha,
+        h: item.horas
+      }));
+    }
     render();
   } catch (err) {
-    console.error("Error al obtener datos:", err);
+    console.error("Error al conectar con Google Sheets:", err);
+    render();
   }
 }
 
 function render() {
-  cards.innerHTML = "";
-  hist.innerHTML = "";
+  // 1. RENDERIZAR TARJETAS DE ACUMULADOS
+  const containerCards = document.getElementById("cards") || cards;
+  if (containerCards) {
+    containerCards.innerHTML = "";
+    personas.forEach(n => {
+      let t = reg.filter(r => r.p === n).reduce((a, b) => a + Number(b.h), 0);
+      let pct = Math.min((t / 40) * 100, 100);
+      let col = t >= 40 ? "#dc2626" : t >= 30 ? "#f59e0b" : "#16a34a";
 
-  personas.forEach(n => {
-    let t = reg.filter(r => r.p === n).reduce((a, b) => a + Number(b.h), 0);
-    cards.innerHTML += `<div class='card'><b>${n}</b><div class='small'>HORAS EXTRA ACUMULADAS</div><div class='big'>${t.toFixed(1)} h</div></div>`;
-  });
-
-  if (!reg.length) {
-    hist.innerHTML = "<tr><td colspan='4'>Aún no hay registros.</td></tr>";
+      containerCards.innerHTML += `
+        <div class="card" style="background:#fff; padding:15px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); font-family:sans-serif;">
+          <b style="font-size:1.1em; color:#0f172a;">${n}</b>
+          <div style="font-size:0.68em; color:#64748b; font-weight:bold; margin-top:3px; letter-spacing:0.5px;">HORAS EXTRA ACUMULADAS</div>
+          <div style="font-size:1.8em; font-weight:bold; margin:6px 0; color:#0f172a;">${t.toFixed(1)} h</div>
+          <div style="width:100%; background:#e2e8f0; height:4px; border-radius:2px; overflow:hidden;">
+            <div style="width:${pct}%; background:${col}; height:100%;"></div>
+          </div>
+        </div>
+      `;
+    });
   }
 
-  reg.forEach((r, i) => {
-    hist.innerHTML += `<tr><td>${r.p}</td><td>${r.f}</td><td>${r.h}</td><td><button class='icon' onclick='eliminar(${i})'>🗑️</button></td></tr>`;
-  });
+  // 2. RENDERIZAR TABLA DE HISTORIAL ESTILIZADA
+  const tbody = document.querySelector("table tbody") || hist;
+  if (tbody) {
+    let html = "";
+    if (!reg.length) {
+      html = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b; font-style:italic;">Aún no hay registros cargados.</td></tr>`;
+    } else {
+      reg.forEach((r, i) => {
+        // Dar formato visual a la fecha si viene como ISO
+        let fechaFormateada = r.f;
+        if (typeof r.f === "string" && r.f.includes("T")) {
+          fechaFormateada = r.f.split("T")[0];
+        }
+
+        html += `
+          <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+            <td style="padding: 12px 16px; font-weight: 600; color: #334155; text-align: center;">${r.p}</td>
+            <td style="padding: 12px 16px; color: #475569; text-align: center;">${fechaFormateada}</td>
+            <td style="padding: 12px 16px; font-weight: 700; color: #0f172a; text-align: center;">${r.h}</td>
+            <td style="padding: 12px 16px; text-align: center;">
+              <button onclick="eliminar(${i})" title="Eliminar registro" style="background: #ef4444; color: white; border: none; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,0.15);">
+                🗑️
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+    tbody.innerHTML = html;
+  }
 }
 
-// AGREGAR REGISTRO EN GOOGLE SHEETS
+// AGREGAR REGISTRO
 async function agregar() {
-  if (!f.value || !h.value) return alert("Complete los datos");
+  if (!f.value || !h.value) return alert("Por favor complete la fecha y las horas.");
 
-  const nuevoRegistro = { p: p.value, f: f.value, h: h.value };
-  reg.push(nuevoRegistro);
-  render(); // Actualiza la pantalla inmediatamente
+  const registroNuevo = { p: p.value, f: f.value, h: parseFloat(h.value) };
+  reg.push(registroNuevo);
+  render();
 
-  // Envía a Google Sheets en segundo plano
+  const horasGuardadas = h.value;
+  h.value = "";
+
   await fetch(SCRIPT_URL, {
     method: "POST",
     mode: "no-cors",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       action: "ADD",
-      persona: p.value,
-      fecha: f.value,
-      horas: h.value
+      persona: registroNuevo.p,
+      fecha: registroNuevo.f,
+      horas: horasGuardadas
     })
   });
 }
 
-// ELIMINAR REGISTRO EN GOOGLE SHEETS
+// BORRAR ÚLTIMO REGISTRO
+async function borrarUltimo() {
+  if (!reg.length) return alert("No hay registros para borrar.");
+  if (confirm("¿Desea borrar el último registro cargado?")) {
+    const ultimo = reg.pop();
+    render();
+
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "DELETE",
+        persona: ultimo.p,
+        fecha: ultimo.f
+      })
+    });
+  }
+}
+
+// ELIMINAR REGISTRO ESPECÍFICO DE LA TABLA
 async function eliminar(i) {
-  if (confirm("¿Eliminar registro?")) {
+  if (confirm("¿Desea eliminar este registro del historial?")) {
     const borrado = reg[i];
     reg.splice(i, 1);
     render();
@@ -128,7 +198,7 @@ async function eliminar(i) {
   }
 }
 
-// Carga inicial al abrir la página
+// Inicio
 cargarDesdeSheets();
 </script>
 </body></html>
