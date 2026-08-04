@@ -51,8 +51,6 @@ let reg = [];
 const p = document.querySelector("select");
 const f = document.querySelector("input[type='date']");
 const h = document.querySelector("input[type='number']") || document.querySelector("input[placeholder='Horas']");
-const cards = document.getElementById("cards") || document.querySelector(".cards") || document.querySelectorAll("div")[2];
-const hist = document.getElementById("hist") || document.querySelector("tbody") || document.querySelector("table");
 
 // Cargar desplegable de personas
 if (p) {
@@ -63,13 +61,13 @@ if (p) {
 // Cargar registros desde Google Sheets
 async function cargarDesdeSheets() {
   try {
-    const res = await fetch(SCRIPT_URL);
+    const res = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
     const data = await res.json();
     if (Array.isArray(data)) {
       reg = data.map(item => ({
         p: item.persona,
         f: item.fecha,
-        h: item.horas
+        h: parseFloat(item.horas) || 0
       }));
     }
     render();
@@ -81,7 +79,7 @@ async function cargarDesdeSheets() {
 
 function render() {
   // 1. RENDERIZAR TARJETAS DE ACUMULADOS
-  const containerCards = document.getElementById("cards") || cards;
+  const containerCards = document.getElementById("cards") || document.querySelector(".cards") || document.querySelectorAll("div")[2];
   if (containerCards) {
     containerCards.innerHTML = "";
     personas.forEach(n => {
@@ -103,14 +101,13 @@ function render() {
   }
 
   // 2. RENDERIZAR TABLA DE HISTORIAL ESTILIZADA
-  const tbody = document.querySelector("table tbody") || hist;
+  const tbody = document.querySelector("table tbody");
   if (tbody) {
     let html = "";
     if (!reg.length) {
       html = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b; font-style:italic;">Aún no hay registros cargados.</td></tr>`;
     } else {
       reg.forEach((r, i) => {
-        // Dar formato visual a la fecha si viene como ISO
         let fechaFormateada = r.f;
         if (typeof r.f === "string" && r.f.includes("T")) {
           fechaFormateada = r.f.split("T")[0];
@@ -138,67 +135,61 @@ function render() {
 async function agregar() {
   if (!f.value || !h.value) return alert("Por favor complete la fecha y las horas.");
 
-  const registroNuevo = { p: p.value, f: f.value, h: parseFloat(h.value) };
-  reg.push(registroNuevo);
-  render();
+  const personaVal = p.value;
+  const fechaVal = f.value;
+  const horasVal = parseFloat(h.value);
 
-  const horasGuardadas = h.value;
+  // Agregar visualmente de inmediato
+  reg.push({ p: personaVal, f: fechaVal, h: horasVal });
+  render();
   h.value = "";
 
-  await fetch(SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      action: "ADD",
-      persona: registroNuevo.p,
-      fecha: registroNuevo.f,
-      horas: horasGuardadas
-    })
-  });
-}
-
-// BORRAR ÚLTIMO REGISTRO
-async function borrarUltimo() {
-  if (!reg.length) return alert("No hay registros para borrar.");
-  if (confirm("¿Desea borrar el último registro cargado?")) {
-    const ultimo = reg.pop();
-    render();
-
+  // Enviar a Google Sheets
+  try {
     await fetch(SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({
-        action: "DELETE",
-        persona: ultimo.p,
-        fecha: ultimo.f
+        action: "ADD",
+        persona: personaVal,
+        fecha: fechaVal,
+        horas: horasVal
       })
     });
+    // Volver a consultar Sheets pasados 1.5s para confirmar guardado
+    setTimeout(cargarDesdeSheets, 1500);
+  } catch (err) {
+    console.error("Error al guardar en Sheets:", err);
   }
 }
 
-// ELIMINAR REGISTRO ESPECÍFICO DE LA TABLA
+// ELIMINAR REGISTRO
 async function eliminar(i) {
   if (confirm("¿Desea eliminar este registro del historial?")) {
     const borrado = reg[i];
     reg.splice(i, 1);
     render();
 
-    await fetch(SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "DELETE",
-        persona: borrado.p,
-        fecha: borrado.f
-      })
-    });
+    try {
+      await fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          action: "DELETE",
+          persona: borrado.p,
+          fecha: borrado.f
+        })
+      });
+      setTimeout(cargarDesdeSheets, 1500);
+    } catch (err) {
+      console.error("Error al eliminar en Sheets:", err);
+    }
   }
 }
 
-// Inicio
+// Cargar al iniciar
 cargarDesdeSheets();
 </script>
 </body></html>
